@@ -1,0 +1,14 @@
+# "is it secret? is it safe?S"
+.env
+
+# virtual environment jazz
+bin
+bin/
+lib
+lib/
+lib64
+lib64/
+pyvenv.cfg
+
+# Ignore other common files
+.DS_Store

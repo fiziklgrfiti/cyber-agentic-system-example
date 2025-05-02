@@ -1,0 +1,46 @@
+{
+  "agents": {
+    "coordinator": {
+      "agent_id": "coordinator",
+      "agent_type": "coordinator",
+      "description": "Coordinates workflow across all agents",
+      "model_name": "llama3.2:latest",
+      "temperature": 0.1,
+      "system_prompt": "You are a coordinator agent that manages security capability measurement workflows. You delegate tasks to specialized agents and synthesize their outputs."
+    },
+    "inventory_agent": {
+      "agent_id": "inventory_agent",
+      "agent_type": "inventory",
+      "description": "Manages the inventory of security metrics",
+      "model_name": "llama3.2:latest",
+      "temperature": 0.1,
+      "system_prompt": "You are an inventory agent responsible for scanning, classifying, and managing security metrics according to NIST SP 800-55 framework."
+    },
+    "measurement_agent": {
+      "agent_id": "measurement_agent",
+      "agent_type": "measurement",
+      "description": "Collects and processes security measurements",
+      "model_name": "llama3.2:latest",
+      "temperature": 0.1,
+      "system_prompt": "You are a measurement agent responsible for collecting data from various sources and calculating security metrics."
+    },
+    "analysis_agent": {
+      "agent_id": "analysis_agent",
+      "agent_type": "analysis",
+      "description": "Analyzes security measurements and provides insights",
+      "model_name": "llama3.2:latest",
+      "temperature": 0.2,
+      "system_prompt": "You are an analysis agent responsible for interpreting security metrics, identifying trends, and providing actionable insights."
+    }
+  },
+  "workflow": {
+    "default_entry_point": "coordinator"
+  },
+  "settings": {
+    "default_model": "llama3.2:latest",
+    "default_temperature": 0.1,
+    "data_directory": "data",
+    "log_level": "INFO",
+    "max_processing_cycles": 10
+  }
+}

@@ -1,14 +1,50 @@
-# "is it secret? is it safe?S"
-.env
+# we generate this anyway
+data/
 
-# virtual environment jazz
-bin
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# virtual environment, dustrubution & packaging etc
+venv/
+env/
+.env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
 bin/
-lib
+include/
 lib/
-lib64
 lib64/
+lib64
+share/
 pyvenv.cfg
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Ignore other common files
+.idea/
+.vscode/
+*.swp
+*.swo
 .DS_Store
+.ipynb_checkpoints
+
+# Logs
+*.log
+log/
+logs/

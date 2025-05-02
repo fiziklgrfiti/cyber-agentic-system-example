@@ -1,0 +1,20 @@
+{
+  "agents": {
+    "coordinator": {
+      "agent_id": "coordinator",
+      "agent_type": "coordinator",
+      "description": "Coordinates workflow across all agents",
+      "model_name": "llama3.2:latest",
+      "temperature": 0.1,
+      "system_prompt": "You are a coordinator agent that manages workflow across multiple specialized agents."
+    }
+  },
+  "workflow": {
+    "default_entry_point": "coordinator"
+  },
+  "settings": {
+    "default_model": "llama3.2:latest",
+    "default_temperature": 0.1,
+    "data_directory": "data"
+  }
+}

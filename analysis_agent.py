@@ -132,22 +132,42 @@ class AnalysisAgent(BaseAgent):
         """Initialize the analysis agent."""
         self.store_in_memory("reports", {})
         self.store_in_memory("analyses", {})
-        
-        # Generate an initial example report to verify report persistence works
-        logger.info(f"AnalysisAgent {self.agent_id} generating test report during initialization")
-        try:
-            test_report = self.generate_report("executive", "initialization test")
-            if test_report:
-                logger.info(f"Initial test report generated successfully")
-            else:
-                logger.warning(f"Failed to generate initial test report")
-        except Exception as e:
-            logger.error(f"Error generating initial test report: {str(e)}")
-        
+        self.store_in_memory("generate_test_report", True)
+
         logger.info(f"AnalysisAgent {self.agent_id} initialized")
         
     def run_cycle(self):
         """Run a processing cycle."""
+        logger.debug(f"AnalysisAgent {self.agent_id} run_cycle called")
+        
+        # Check if we need to generate a test report
+        if self.retrieve_from_memory("generate_test_report", False):
+            # Check if we have any metrics with data before trying to generate a report
+            all_metrics = self.metric_manager.list_metrics()
+            has_data = False
+            
+            for metric in all_metrics:
+                values = self.metric_manager.get_metric_values(metric.id)
+                if values:
+                    has_data = True
+                    break
+            
+            if has_data:
+                logger.info(f"AnalysisAgent {self.agent_id} generating test report during first cycle")
+                try:
+                    test_report = self.generate_report("executive", "initialization test")
+                    if test_report:
+                        logger.info(f"Initial test report generated successfully")
+                    else:
+                        logger.warning(f"Failed to generate initial test report")
+                except Exception as e:
+                    logger.error(f"Error generating initial test report: {str(e)}")
+            else:
+                logger.info(f"Skipping test report generation - no metric data available yet")
+            
+            # Clear flag to prevent repeat generation
+            self.store_in_memory("generate_test_report", False)
+        
         # Process all pending messages
         self.process_messages()
     
@@ -359,19 +379,20 @@ class AnalysisAgent(BaseAgent):
         
         # Insights based on metric type
         if metric.type.value == "implementation":
-            # Implementation metrics often track progress toward goals
-            if trend["direction"] == "increasing":
-                insights.append("Implementation is progressing positively.")
-            elif trend["direction"] == "stable" and trend["last_value"] > 80:
-                insights.append("Implementation has reached a high level and is maintaining it.")
-            elif trend["direction"] == "decreasing":
-                insights.append("Implementation progress is regressing, which may indicate process failures.")
+            if "direction" in trend:
+                if trend["direction"] == "increasing":
+                    insights.append("Implementation is progressing positively.")
+                elif trend["direction"] == "stable" and trend.get("last_value", 0) > 80:
+                    insights.append("Implementation has reached a high level and is maintaining it.")
+                elif trend["direction"] == "decreasing":
+                    insights.append("Implementation progress is regressing, which may indicate process failures.")
+        
         
         elif metric.type.value == "effectiveness":
             # Effectiveness metrics measure how well controls are working
             if trend["direction"] == "increasing":
                 insights.append("Controls are becoming more effective over time.")
-            elif trend["direction"] == "stable" and trend["last_value"] > 70:
+            elif trend["direction"] == "stable" and trend.get("last_value", 0) > 70:
                 insights.append("Controls are maintaining good effectiveness.")
             elif trend["direction"] == "decreasing":
                 insights.append("Control effectiveness is degrading, which may increase security risk.")
@@ -588,6 +609,9 @@ class AnalysisAgent(BaseAgent):
             Formatted report or None if generation fails
         """
         logger.info(f"AnalysisAgent.generate_report called for {report_type} report, period {period}")
+        logger.debug(f"Agent {self.agent_id} system refs - direct: {hasattr(self, 'system')}, " +
+                f"via message_bus: {hasattr(self.message_bus, 'system')}")
+        logger.debug(f"System on self: {hasattr(self, 'system')}, System on message_bus: {hasattr(self.message_bus, 'system')}")
         
         # Get date range from period
         start_date, end_date = self._parse_period(period)

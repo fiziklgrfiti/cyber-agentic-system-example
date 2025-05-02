@@ -81,20 +81,21 @@ class SecurityCapabilitySystem:
         # Initialize report persistence first
         logger.info("Initializing report persistence system first")
         self.init_report_persistence()
+
+        # Initialize message bus
+        self.message_bus = MessageBus()
+        self.message_bus.system = self # Explicitly set system
+        logger.debug("Set system reference on message bus")
         
+        # Initialize agent registry with message bus that has system reference
+        self.agent_registry = AgentRegistry(self.message_bus)
+        logger.debug("Set message bus against angent regisry reference")
+
         # Initialize core components
         self.llm_manager = LLMManager()
         self.performance_monitor = PerformanceMonitor()
         self.config_manager = ConfigManager(config_path)
         self.test_framework = TestFramework()
-        
-        # Initialize message bus and agent registry
-        self.message_bus = MessageBus()
-        # Set system reference on message bus
-        self.message_bus.system = self
-        logger.debug("Set system reference on message bus")
-        
-        self.agent_registry = AgentRegistry(self.message_bus)
         
         # Initialize state and memory components
         self.conversation_history = ConversationHistory()
@@ -113,10 +114,11 @@ class SecurityCapabilitySystem:
         self.load_agents()
         
         # Make sure all agents have system reference 
-        self.update_agent_system_references()
+        # self.update_agent_system_references() # fallback if needed
         
         logger.info("SecurityCapabilitySystem initialization complete")
 
+    # redundant function... remove later, keeping as a fall back.
     def update_agent_system_references(self):
         """Explicitly set system reference on all agents"""
         for agent_id, agent in self.agent_registry.get_all_agents().items():
@@ -776,266 +778,6 @@ class SecurityCapabilitySystem:
         
         logger.info("System shutdown complete")
 
-
-class InventoryAgent(BaseAgent):
-    """
-    Agent responsible for managing the inventory of security metrics.
-    This is a placeholder implementation that will be expanded in future phases.
-    """
-    
-    def initialize(self):
-        """Initialize the inventory agent."""
-        self.store_in_memory("metrics", {})
-        logger.info(f"InventoryAgent {self.agent_id} initialized")
-    
-    def run_cycle(self):
-        """Run a processing cycle."""
-        pass
-    
-    def handle_query(self, message: AgentMessage) -> AgentMessage:
-        """
-        Handle query messages by determining which specialized agent should process it.
-        
-        Args:
-            message: Query message
-            
-        Returns:
-            Response message
-        """
-        query = message.content.content
-        logger.info(f"Coordinator received query: {query}")
-        
-        # Create a new workflow
-        workflow_id = str(uuid.uuid4())
-        
-        # Store workflow information
-        workflows = self.retrieve_from_memory("workflows", {})
-        active_workflows = self.retrieve_from_memory("active_workflows", set())
-        
-        # Store workflow information
-        workflows[workflow_id] = {
-            "id": workflow_id,
-            "query": query,
-            "created_at": datetime.datetime.now().isoformat(),
-            "status": "initiated",
-            "steps": [],
-            "results": {},
-            "initiator": message.sender
-        }
-        
-        # Mark as active
-        active_workflows.add(workflow_id)
-        
-        # Update memory
-        self.store_in_memory("workflows", workflows)
-        self.store_in_memory("active_workflows", active_workflows)
-        
-        # Analyze the query to determine which agent should handle it
-        prompt = f"""
-        You are a coordinator agent that routes security metric queries to specialized agents.
-        
-        You received this query: "{query}"
-        
-        Based on this query, determine which agent should handle it:
-        
-        1. inventory_agent - For queries about the inventory of security metrics, classification, or gap analysis
-        2. measurement_agent - For queries about collecting metric values, data sources, or measurement schedules
-        3. analysis_agent - For queries about analyzing metrics, generating reports, trends, or recommendations
-        
-        Reply with ONLY ONE agent name from the options above.
-        """
-        
-        try:
-            # Ask LLM which agent should handle this query
-            response = self.query_llm(prompt)
-            
-            # Extract agent name from response
-            if "inventory" in response.lower():
-                target_agent = "inventory_agent"
-            elif "measurement" in response.lower():
-                target_agent = "measurement_agent"
-            elif "analysis" in response.lower():
-                target_agent = "analysis_agent"
-            else:
-                # Default to inventory agent if unclear
-                target_agent = "inventory_agent"
-            
-            logger.info(f"Routing query to {target_agent}")
-            
-            # Forward the query to the appropriate agent
-            forward_message = self.create_message(
-                content=query,
-                message_type=MessageType.QUERY,
-                receiver=target_agent,
-                metadata={"workflow_id": workflow_id, "original_sender": message.sender}
-            )
-            
-            self.message_bus.send_message(forward_message)
-            
-            # Update workflow status
-            workflows[workflow_id]["status"] = "routed"
-            workflows[workflow_id]["steps"].append({
-                "action": "routed",
-                "target": target_agent,
-                "timestamp": datetime.datetime.now().isoformat()
-            })
-            
-            self.store_in_memory("workflows", workflows)
-            
-            # Send acknowledgment to the user
-            return self.create_response_message(
-                content=f"I've routed your query about security metrics to our {target_agent.replace('_', ' ')}. You'll receive a response shortly.",
-                original_message=message,
-                metadata={"workflow_id": workflow_id}
-            )
-            
-        except Exception as e:
-            logger.error(f"Error routing query: {str(e)}")
-            
-            # Update workflow status
-            workflows[workflow_id]["status"] = "error"
-            workflows[workflow_id]["error"] = str(e)
-            self.store_in_memory("workflows", workflows)
-            
-            return self.create_error_message(
-                error_content=f"Error processing query: {str(e)}",
-                receiver=message.sender,
-                reply_to=message.id
-            )
-    
-    def handle_response(self, message: AgentMessage) -> Optional[AgentMessage]:
-        """
-        Handle response messages from specialized agents.
-        
-        Args:
-            message: Response message
-            
-        Returns:
-            Optional response message to forward
-        """
-        response_content = message.content.content
-        logger.info(f"Coordinator received response from {message.sender}")
-        
-        # Check if this is a response to a workflow
-        workflow_id = message.content.metadata.get("workflow_id")
-        original_sender = message.content.metadata.get("original_sender")
-        
-        if not workflow_id or not original_sender:
-            logger.warning(f"Response from {message.sender} missing workflow_id or original_sender")
-            return None
-        
-        # Get workflow
-        workflows = self.retrieve_from_memory("workflows", {})
-        workflow = workflows.get(workflow_id)
-        
-        if not workflow:
-            logger.warning(f"Workflow {workflow_id} not found")
-            return None
-        
-        # Update workflow status
-        workflow["status"] = "completed"
-        workflow["steps"].append({
-            "action": "response_received",
-            "from": message.sender,
-            "timestamp": datetime.datetime.now().isoformat()
-        })
-        
-        # Store response in workflow
-        workflow["results"][message.sender] = response_content
-        
-        # Update workflow
-        workflows[workflow_id] = workflow
-        self.store_in_memory("workflows", workflows)
-        
-        # Forward the response to the original sender
-        forward_response = self.create_message(
-            content=response_content,
-            message_type=MessageType.RESPONSE,
-            receiver=original_sender,
-            metadata={"workflow_id": workflow_id, "source_agent": message.sender}
-        )
-        
-        self.message_bus.send_message(forward_response)
-        
-        # Mark workflow as inactive if complete
-        active_workflows = self.retrieve_from_memory("active_workflows", set())
-        if workflow_id in active_workflows:
-            active_workflows.remove(workflow_id)
-            self.store_in_memory("active_workflows", active_workflows)
-        
-        return None
-
-
-class MeasurementAgent(BaseAgent):
-    """
-    Agent responsible for collecting and processing security measurements.
-    This is a placeholder implementation that will be expanded in future phases.
-    """
-    
-    def initialize(self):
-        """Initialize the measurement agent."""
-        self.store_in_memory("measurements", {})
-        logger.info(f"MeasurementAgent {self.agent_id} initialized")
-    
-    def run_cycle(self):
-        """Run a processing cycle."""
-        pass
-    
-    def handle_query(self, message: AgentMessage) -> AgentMessage:
-        """
-        Handle query messages.
-        
-        Args:
-            message: Query message
-            
-        Returns:
-            Response message
-        """
-        query = message.content.content
-        logger.info(f"MeasurementAgent received query: {query}")
-        
-        # Simple response for now
-        return self.create_response_message(
-            content=f"MeasurementAgent acknowledges query: {query}",
-            original_message=message
-        )
-
-
-class AnalysisAgent(BaseAgent):
-    """
-    Agent responsible for analyzing security measurements.
-    This is a placeholder implementation that will be expanded in future phases.
-    """
-    
-    def initialize(self):
-        """Initialize the analysis agent."""
-        self.store_in_memory("analyses", {})
-        logger.info(f"AnalysisAgent {self.agent_id} initialized")
-    
-    def run_cycle(self):
-        """Run a processing cycle."""
-        pass
-    
-    def handle_query(self, message: AgentMessage) -> AgentMessage:
-        """
-        Handle query messages.
-        
-        Args:
-            message: Query message
-            
-        Returns:
-            Response message
-        """
-        query = message.content.content
-        logger.info(f"AnalysisAgent received query: {query}")
-        
-        # Simple response for now
-        return self.create_response_message(
-            content=f"AnalysisAgent acknowledges query: {query}",
-            original_message=message
-        )
-
-
 # Demo workflow functions
 
 def create_sample_metrics(metric_manager: MetricManager):
@@ -1312,6 +1054,9 @@ def run_demo_workflow_with_reports():
     for metric in metrics:
         print(f"- {metric.id}: {metric.name} ({metric.type.value})")
     
+    # Process messages to trigger agent cycles
+    system.process_messages(max_cycles=5)  # Run several cycles to ensure agents execute
+
     # Generate reports directly with the comprehensive generator
     print("\nGenerating comprehensive reports directly...")
     for report_type in ["executive", "technical", "compliance", "trend"]:
@@ -1476,6 +1221,9 @@ def main():
             print("Available report types:")
             for report_type in report_types:
                 print(f"- {report_type}")
+        
+        # Process messages to trigger agent cycles
+        system.process_messages(max_cycles=5)  # Run several cycles to ensure agents execute
     
     elif args.demo:
         run_demo_workflow_with_reports()

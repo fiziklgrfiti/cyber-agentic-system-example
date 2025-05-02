@@ -365,8 +365,8 @@ class BaseAgent(ABC):
     """
     
     def __init__(self, agent_id: str, agent_type: str, description: str, message_bus: MessageBus,
-                 model_name: str = DEFAULT_MODEL, temperature: float = DEFAULT_TEMPERATURE,
-                 system_prompt: str = None):
+             model_name: str = DEFAULT_MODEL, temperature: float = DEFAULT_TEMPERATURE,
+             system_prompt: str = None, system=None):
         """
         Initialize the base agent.
         
@@ -390,6 +390,9 @@ class BaseAgent(ABC):
         self.llm = llm_manager.get_llm(model_name, temperature)
         self.message_handlers = self._register_message_handlers()
         self.memory = {}  # Simple memory store
+        
+        # Store system reference
+        self.system = system
         
         # Subscribe to direct messages
         self.message_bus.subscribe(self.agent_id)
@@ -716,20 +719,30 @@ class AgentRegistry:
         
         agent_class = self.agent_types[agent_type]
         
-        # Create the agent
-        agent = agent_class(
-            agent_id=config.agent_id,
-            agent_type=config.agent_type,
-            description=config.description,
-            message_bus=self.message_bus,
-            model_name=config.model_name,
-            temperature=config.temperature,
-            system_prompt=config.system_prompt
-        )
+        # Extract the system reference from message bus
+        system_ref = getattr(self.message_bus, 'system', None)
+        
+        # Basic parameters that all agent constructors accept
+        basic_params = {
+            "agent_id": config.agent_id,
+            "agent_type": config.agent_type,
+            "description": config.description,
+            "message_bus": self.message_bus,
+            "model_name": config.model_name,
+            "temperature": config.temperature,
+            "system_prompt": config.system_prompt
+        }
+        
+        # Create the agent with only the basic parameters
+        agent = agent_class(**basic_params)
+        
+        # Manually set the system reference after creation
+        if system_ref is not None:
+            setattr(agent, 'system', system_ref)
+            logger.debug(f"Setting system reference on agent {config.agent_id}")
         
         # Store it in the registry
         self.agents[config.agent_id] = agent
-        
         # Initialize the agent
         agent.initialize()
         
@@ -820,8 +833,8 @@ class CoordinatorAgent(BaseAgent):
     """
     
     def __init__(self, agent_id: str, agent_type: str, description: str, message_bus: MessageBus,
-                 model_name: str = DEFAULT_MODEL, temperature: float = DEFAULT_TEMPERATURE,
-                 system_prompt: str = None):
+             model_name: str = DEFAULT_MODEL, temperature: float = DEFAULT_TEMPERATURE,
+             system_prompt: str = None, system=None):
         """Initialize the coordinator agent."""
         super().__init__(agent_id, agent_type, description, message_bus, model_name, temperature, system_prompt)
         
@@ -831,6 +844,8 @@ class CoordinatorAgent(BaseAgent):
             MessageType.RESULT.value,
             MessageType.STATUS.value
         ])
+        
+        self.system = system  # Store system reference
     
     def initialize(self):
         """Initialize the coordinator agent."""
